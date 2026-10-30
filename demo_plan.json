@@ -1,0 +1,9 @@
+{
+  "rooms": [
+    {"name": "Комната", "type": "dry", "area_m2": 16},
+    {"name": "Кухня", "type": "kitchen", "area_m2": 9},
+    {"name": "Ванная", "type": "bathroom", "area_m2": 4}
+  ],
+  "renovation": "capital",
+  "budget": "standard"
+}

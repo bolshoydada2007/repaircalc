@@ -1,0 +1,355 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>RepairCalc — умный подбор материалов</title>
+<style>
+  :root { --accent: #e8590c; --bg: #f7f6f3; }
+  * { box-sizing: border-box; }
+  body {
+    font-family: "Segoe UI", system-ui, sans-serif;
+    background: var(--bg); color: #2b2b2b;
+    margin: 0; padding: 24px;
+  }
+  .wrap { max-width: 720px; margin: 0 auto; }
+  h1 { font-size: 26px; margin: 0 0 4px; }
+  .sub { color: #777; margin-bottom: 20px; }
+  .card {
+    background: #fff; border-radius: 14px; padding: 20px;
+    box-shadow: 0 2px 10px rgba(0,0,0,.06); margin-bottom: 16px;
+  }
+  label.fld { display: inline-block; margin: 6px 14px 0 0; font-size: 15px; }
+  select, input[type=number] {
+    padding: 6px 8px; border: 1px solid #ddd; border-radius: 8px;
+    font-size: 15px; background: #fff;
+  }
+  input[type=number] { width: 90px; }
+  button {
+    background: var(--accent); color: #fff; border: 0;
+    padding: 12px 22px; border-radius: 10px; font-size: 16px;
+    cursor: pointer;
+  }
+  button:hover { filter: brightness(.95); }
+  button:disabled { opacity: .5; cursor: wait; }
+  button.ghost {
+    background: #fff; color: var(--accent); border: 1px solid var(--accent);
+    padding: 7px 14px; font-size: 14px;
+  }
+  .cases { margin-top: 12px; display: flex; gap: 8px; flex-wrap: wrap; }
+  .cases .cap { font-size: 14px; color: #777; align-self: center; }
+  .work-block { margin-bottom: 10px; }
+  .work-block h4 { margin: 0 0 6px; font-size: 15px; }
+  .reason {
+    display: inline-block; background: #eee7ff; color: #5f3dc4;
+    border-radius: 6px; padding: 1px 8px; font-size: 12px; margin: 2px 4px 2px 0;
+  }
+  .option {
+    padding: 10px 0; border-bottom: 1px solid #eee; font-size: 15px;
+  }
+  .option .head { display: flex; justify-content: space-between; gap: 10px; }
+  .option .name { flex: 1; font-weight: 600; }
+  .option .price { white-space: nowrap; font-weight: 600; color: var(--accent); }
+  .option .meta { color: #999; font-size: 13px; margin-top: 2px; }
+  .badge {
+    display: inline-block; background: #fff0e6; color: #d9480f;
+    border-radius: 6px; padding: 1px 8px; font-size: 12px; margin-right: 6px;
+  }
+  .err { color: #c92a2a; }
+  .src {
+    display: inline-block; background: #e7f5ff; color: #1971c2;
+    border-radius: 6px; padding: 1px 8px; font-size: 12px; margin-left: 6px;
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>RepairCalc · умный подбор</h1>
+  <div class="sub">Учитываем помещение, влагостойкость и бюджет. Каждый вариант — с объяснением, почему он подошёл.
+    <a href="/">← обычный калькулятор</a></div>
+
+  <div class="card">
+    <div class="work-block">
+      <h4>Что делаем</h4>
+      <label class="fld">Работа:
+        <select id="type">
+          <option value="tile">Плитка</option>
+          <option value="paint">Покраска</option>
+          <option value="wallpaper">Обои</option>
+          <option value="laminate">Ламинат</option>
+        </select>
+      </label>
+      <label class="fld">Площадь: <input type="number" id="area" value="6" min="0.1" step="0.1"> м²</label>
+      <label class="fld" id="f-coats" style="display:none">Слоёв:
+        <input type="number" id="coats" value="2" min="1" max="4" style="width:50px"></label>
+      <label class="fld" id="f-height" style="display:none">Высота стены:
+        <input type="number" id="height" value="2.7" min="0.5" step="0.05" style="width:70px"> м</label>
+    </div>
+    <div class="work-block">
+      <h4>Помещение</h4>
+      <label class="fld"><input type="radio" name="room" value="bathroom" checked> Ванная</label>
+      <label class="fld"><input type="radio" name="room" value="kitchen"> Кухня</label>
+      <label class="fld"><input type="radio" name="room" value="dry"> Комната</label>
+      <label class="fld"><input type="radio" name="room" value="any"> Любое</label>
+    </div>
+    <div class="work-block">
+      <h4>Бюджет</h4>
+      <label class="fld"><input type="radio" name="budget" value="budget"> Эконом</label>
+      <label class="fld"><input type="radio" name="budget" value="standard" checked> Стандарт</label>
+      <label class="fld"><input type="radio" name="budget" value="premium"> Премиум</label>
+    </div>
+    <button id="go">Подобрать варианты</button>
+
+    <div class="cases">
+      <span class="cap">Демо-кейс:</span>
+      <button class="ghost" data-case="tile">Плитка · ванная · стандарт</button>
+      <button class="ghost" data-case="paint">Краска · ванная · стандарт</button>
+      <button class="ghost" data-case="laminate">Ламинат · комната · эконом</button>
+    </div>
+  </div>
+
+  <div class="card" id="result" style="display:none"></div>
+
+  <div class="card" id="photo-card">
+    <h3 style="margin:0 0 10px">Фото помещения</h3>
+    <label class="fld">Фото комнаты:
+      <input type="file" id="photo-file" accept="image/*"></label>
+    <label class="fld">Материал:
+      <select id="photo-type">
+        <option value="paint">Краска</option>
+        <option value="wallpaper" selected>Обои</option>
+        <option value="tile">Плитка</option>
+        <option value="laminate">Ламинат</option>
+      </select></label>
+    <br><br>
+    <button id="photo-go">Подобрать под фото</button>
+    <div id="photo-result" style="margin-top:12px"></div>
+  </div>
+
+  <div class="card" id="plan-card">
+    <h3 style="margin:0 0 10px">Квартира под ключ</h3>
+    <label class="fld">Шаблон:
+      <select id="plan-preset">
+        <option value="studio">Студия 31 м²</option>
+        <option value="one">Однушка 48 м²</option>
+        <option value="two">Двушка 62 м²</option>
+      </select></label>
+    <label class="fld">Тип ремонта:
+      <select id="plan-renovation">
+        <option value="cosmetic">Косметический</option>
+        <option value="capital">Капитальный</option>
+      </select></label>
+    <label class="fld">Бюджет:
+      <select id="plan-budget">
+        <option value="budget">Эконом</option>
+        <option value="standard" selected>Стандарт</option>
+        <option value="premium">Премиум</option>
+      </select></label>
+    <br><br>
+    <button id="plan-go">Собрать квартиру</button>
+    <div id="plan-result" style="margin-top:12px"></div>
+  </div>
+</div>
+
+<script>
+const money = new Intl.NumberFormat("ru-RU", {style:"currency", currency:"RUB", maximumFractionDigits: 0});
+
+function workName(t) {
+  return {tile: "Плитка", paint: "Покраска", wallpaper: "Обои", laminate: "Ламинат"}[t] || t;
+}
+function roomName(r) {
+  return {bathroom: "ванная", kitchen: "кухня", dry: "комната", any: "любое помещение"}[r] || r;
+}
+function budgetName(b) {
+  return {budget: "эконом", standard: "стандарт", premium: "премиум"}[b] || b;
+}
+
+function setCase(type, area, room, budget) {
+  document.getElementById("type").value = type;
+  document.getElementById("area").value = area;
+  document.querySelector('input[name=room][value="' + room + '"]').checked = true;
+  document.querySelector('input[name=budget][value="' + budget + '"]').checked = true;
+  document.getElementById("go").click();
+}
+
+document.querySelectorAll("button.ghost").forEach(b => {
+  b.addEventListener("click", () => {
+    const c = b.dataset.case;
+    if (c === "tile") setCase("tile", 6, "bathroom", "standard");
+    if (c === "paint") setCase("paint", 20, "bathroom", "standard");
+    if (c === "laminate") setCase("laminate", 18, "any", "budget");
+  });
+});
+
+document.getElementById("type").addEventListener("change", e => {
+  document.getElementById("f-coats").style.display = e.target.value === "paint" ? "inline-block" : "none";
+  document.getElementById("f-height").style.display = e.target.value === "wallpaper" ? "inline-block" : "none";
+});
+
+document.getElementById("go").addEventListener("click", async () => {
+  const btn = document.getElementById("go");
+  btn.disabled = true;
+  const type = document.getElementById("type").value;
+  const area = parseFloat(document.getElementById("area").value);
+  const room = document.querySelector('input[name=room]:checked').value;
+  const budget = document.querySelector('input[name=budget]:checked').value;
+  const res = document.getElementById("result");
+
+  if (!area || area <= 0) {
+    res.style.display = "block";
+    res.innerHTML = '<div class="err">Укажите площадь больше нуля</div>';
+    btn.disabled = false;
+    return;
+  }
+  const item = {type: type, area_m2: area, room: room, budget: budget};
+  if (type === "paint") item.coats = parseInt(document.getElementById("coats").value) || 2;
+  if (type === "wallpaper") item.height_m = parseFloat(document.getElementById("height").value) || 2.7;
+
+  try {
+    const r = await fetch("/api/v1/smart-select", {
+      method: "POST",
+      headers: {"Content-Type": "application/json"},
+      body: JSON.stringify({items: [item]})
+    });
+    if (!r.ok) {
+      const e = await r.json().catch(() => ({}));
+      const msg = typeof e.detail === "string" ? e.detail : "HTTP " + r.status;
+      throw new Error(msg);
+    }
+    const body = await r.json();
+    const w = body.works[0];
+    res.innerHTML = `
+      <h3 style="margin:0 0 4px">${workName(w.type)} — ${w.area_m2} м²</h3>
+      <div style="color:#777; font-size:14px; margin-bottom:10px">
+        Помещение: ${roomName(room)} · бюджет: ${budgetName(budget)}
+      </div>
+      ${w.options.map((o, i) => `
+        <div class="option">
+          <div class="head">
+            <div class="name">
+              ${i === 0 ? '<span class="badge">самый дешёвый</span>' : ""}
+              ${o.name}
+              <span class="src">Максидом</span>
+            </div>
+            <div class="price">${money.format(o.total_price)}</div>
+          </div>
+          <div class="meta">${o.packages} уп. × ${money.format(o.package_price)}</div>
+          <div>${(o.reasons || []).map(x => `<span class="reason">${x}</span>`).join("")}</div>
+        </div>`).join("")}
+    `;
+    res.style.display = "block";
+  } catch (e) {
+    res.style.display = "block";
+    res.innerHTML = '<div class="err">' + e.message + "</div>";
+  }
+  btn.disabled = false;
+});
+
+document.getElementById("photo-go").addEventListener("click", async () => {
+  const btn = document.getElementById("photo-go");
+  btn.disabled = true;
+  const out = document.getElementById("photo-result");
+  const fileInput = document.getElementById("photo-file");
+  if (!fileInput.files.length) {
+    out.innerHTML = '<div class="err">Выберите фото комнаты</div>';
+    btn.disabled = false;
+    return;
+  }
+  out.textContent = "Анализируем палитру комнаты...";
+  try {
+    const fd = new FormData();
+    fd.append("photo", fileInput.files[0]);
+    fd.append("work_type", document.getElementById("photo-type").value);
+    const r = await fetch("/api/v1/room-photo", {method: "POST", body: fd});
+    if (!r.ok) {
+      const e = await r.json().catch(() => ({}));
+      const msg = typeof e.detail === "string" ? e.detail : "HTTP " + r.status;
+      throw new Error(msg);
+    }
+    const body = await r.json();
+    out.innerHTML = body.matches.map((m, i) => `
+      <div class="option">
+        <div class="head">
+          <div class="name" style="font-weight:400">
+            ${i === 0 ? '<span class="badge">лучшее совпадение</span>' : ""}
+            ${m.name} <span class="src">Максидом</span></div>
+          <div class="price">${money.format(m.price)}</div>
+        </div>
+        <div class="meta">совпадение цвета: ${m.match_percent}%</div>
+      </div>`).join("");
+  } catch (e) {
+    out.innerHTML = '<div class="err">' + e.message + "</div>";
+  }
+  btn.disabled = false;
+});
+
+const PRESETS = {
+  studio: [
+    {name: "Комната", type: "dry", area_m2: 18},
+    {name: "Ванная", type: "bathroom", area_m2: 4},
+    {name: "Кухня", type: "kitchen", area_m2: 9},
+  ],
+  one: [
+    {name: "Комната 1", type: "dry", area_m2: 16},
+    {name: "Комната 2", type: "dry", area_m2: 12},
+    {name: "Кухня", type: "kitchen", area_m2: 10},
+    {name: "Ванная", type: "bathroom", area_m2: 5},
+    {name: "Коридор", type: "dry", area_m2: 5},
+  ],
+  two: [
+    {name: "Комната 1", type: "dry", area_m2: 17},
+    {name: "Комната 2", type: "dry", area_m2: 14},
+    {name: "Кухня-гостиная", type: "kitchen", area_m2: 18},
+    {name: "Ванная", type: "bathroom", area_m2: 6},
+    {name: "Коридор", type: "dry", area_m2: 7},
+  ],
+};
+
+document.getElementById("plan-go").addEventListener("click", async () => {
+  const btn = document.getElementById("plan-go");
+  btn.disabled = true;
+  const out = document.getElementById("plan-result");
+  const preset = PRESETS[document.getElementById("plan-preset").value];
+  const renovation = document.getElementById("plan-renovation").value;
+  const budget = document.getElementById("plan-budget").value;
+  out.textContent = "Собираем квартиру...";
+  try {
+    const r = await fetch("/api/v1/plan", {
+      method: "POST",
+      headers: {"Content-Type": "application/json"},
+      body: JSON.stringify({rooms: preset, renovation: renovation, budget: budget}),
+    });
+    if (!r.ok) {
+      const e = await r.json().catch(() => ({}));
+      const msg = typeof e.detail === "string" ? e.detail : "HTTP " + r.status;
+      throw new Error(msg);
+    }
+    const body = await r.json();
+    out.innerHTML = body.rooms.map(room => `
+      <h3 style="margin:14px 0 6px">${room.name} —
+        <span style="color:var(--accent)">${money.format(room.room_total)}</span></h3>
+      ${room.works.length ? room.works.map(w => {
+        const o = w.options[0];
+        if (!o) return `<div class="option"><div class="name">${workName(w.type)}
+          <span class="err">— нет вариантов, смягчите условия</span></div></div>`;
+        return `<div class="option">
+          <div class="head">
+            <div class="name" style="font-weight:400">${workName(w.type)}:
+              ${o.name} <span class="src">Максидом</span></div>
+            <div class="price">от ${money.format(o.total_price)}</div>
+          </div>
+          <div class="meta">${w.options.length > 1 ? "ещё " + (w.options.length - 1) + " вариант(а) · " : ""}
+            ${(o.reasons || []).join(" · ")}</div>
+        </div>`;
+      }).join("") : '<div class="err">В этой комнате не нашлось вариантов</div>'}
+    `).join("") + `
+      <div style="margin-top:14px; font-size:18px">Итого по квартире:
+        <span class="total">${money.format(body.grand_total)}</span></div>`;
+  } catch (e) {
+    out.innerHTML = '<div class="err">' + e.message + "</div>";
+  }
+  btn.disabled = false;
+});
+</script>
+</body>
+</html>

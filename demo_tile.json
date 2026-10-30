@@ -1,0 +1,5 @@
+{
+  "items": [
+    {"type": "tile", "area_m2": 6.0, "room": "bathroom", "budget": "standard"}
+  ]
+}

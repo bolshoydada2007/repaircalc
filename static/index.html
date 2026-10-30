@@ -1,0 +1,200 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>RepairCalc — умный калькулятор ремонта</title>
+<style>
+  :root { --accent: #e8590c; --bg: #f7f6f3; }
+  * { box-sizing: border-box; }
+  body {
+    font-family: "Segoe UI", system-ui, sans-serif;
+    background: var(--bg); color: #2b2b2b;
+    margin: 0; padding: 24px;
+  }
+  .wrap { max-width: 720px; margin: 0 auto; }
+  h1 { font-size: 26px; margin: 0 0 4px; }
+  .sub { color: #777; margin-bottom: 20px; }
+  .card {
+    background: #fff; border-radius: 14px; padding: 20px;
+    box-shadow: 0 2px 10px rgba(0,0,0,.06); margin-bottom: 16px;
+  }
+  .work { display: flex; align-items: center; gap: 12px; padding: 8px 0; }
+  .work input[type=number] {
+    width: 90px; padding: 6px 8px; border: 1px solid #ddd;
+    border-radius: 8px; font-size: 15px;
+  }
+  .work.disabled { opacity: .35; }
+  .params {
+    display: none; margin-left: 8px; font-size: 14px; color: #555;
+  }
+  .params.on { display: inline; }
+  button {
+    background: var(--accent); color: #fff; border: 0;
+    padding: 12px 22px; border-radius: 10px; font-size: 16px;
+    cursor: pointer;
+  }
+  button:hover { filter: brightness(.95); }
+  button:disabled { opacity: .5; cursor: wait; }
+  .total {
+    font-size: 22px; font-weight: 700; color: var(--accent);
+  }
+  .option {
+    display: flex; justify-content: space-between; gap: 10px;
+    padding: 8px 0; border-bottom: 1px solid #eee; font-size: 15px;
+  }
+  .option .name { flex: 1; }
+  .option .price { white-space: nowrap; font-weight: 600; }
+  .badge {
+    display: inline-block; background: #eee7ff; color: #5f3dc4;
+    border-radius: 6px; padding: 1px 8px; font-size: 12px; margin-left: 6px;
+  }
+  .err { color: #c92a2a; }
+  .spinner { display: none; }
+  .loading .spinner { display: inline; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>RepairCalc</h1>
+  <div class="sub">Умный калькулятор ремонта: подберём материалы и посчитаем смету.
+    <a href="/smart.html">✨ умный подбор с объяснениями</a></div>
+
+  <div class="card">
+    <div class="work">
+      <label><input type="checkbox" id="chk-tile" checked> Плитка</label>
+      <input type="number" id="area-tile" value="6" min="0.1" step="0.1"> м²
+    </div>
+    <div class="work">
+      <label><input type="checkbox" id="chk-paint" checked> Покраска</label>
+      <input type="number" id="area-paint" value="6" min="0.1" step="0.1"> м²
+      <span class="params on" id="p-coats">слоёв:
+        <input type="number" id="coats" value="2" min="1" max="4" style="width:50px"></span>
+    </div>
+    <div class="work">
+      <label><input type="checkbox" id="chk-wallpaper"> Обои</label>
+      <input type="number" id="area-wallpaper" value="20" min="0.1" step="0.1"> м²
+      <span class="params on" id="p-wp">высота стены:
+        <input type="number" id="height" value="2.7" min="0.5" step="0.05" style="width:70px"> м</span>
+    </div>
+    <div class="work">
+      <label><input type="checkbox" id="chk-laminate"> Ламинат</label>
+      <input type="number" id="area-laminate" value="18" min="0.1" step="0.1"> м²
+    </div>
+    <br>
+    <button id="go">Рассчитать смету</button>
+  </div>
+
+  <div class="card">
+    <h3 style="margin:0 0 10px">Подбор по фото</h3>
+    <div style="display:flex; gap:10px; align-items:center; flex-wrap:wrap">
+      <select id="m-cat" style="padding:6px; border:1px solid #ddd; border-radius:8px">
+        <option value="wallpaper">Обои</option>
+        <option value="tile">Плитка</option>
+      </select>
+      <input type="file" id="m-file" accept="image/*" style="font-size:14px">
+      <button id="m-go">Найти похожие</button>
+    </div>
+    <div id="m-result" style="margin-top:12px"></div>
+  </div>
+
+  
+<div class="card" id="result" style="display:none">
+    <div>Итого (минимальный бюджет): <span class="total" id="grand"></span></div>
+    <div id="works"></div>
+  </div>
+</div>
+
+<script>
+const money = new Intl.NumberFormat("ru-RU", {style:"currency", currency:"RUB", maximumFractionDigits: 0});
+
+function addWorkIf(checked, areaId, type, extra) {
+  if (!document.getElementById(checked).checked) return null;
+  const area = parseFloat(document.getElementById(areaId).value);
+  if (!area || area <= 0) return null;
+  return Object.assign({type: type, area_m2: area}, extra || {});
+}
+
+document.getElementById("go").addEventListener("click", async () => {
+  const btn = document.getElementById("go");
+  btn.disabled = true;
+  const works = [
+    addWorkIf("chk-tile", "area-tile", "tile"),
+    addWorkIf("chk-paint", "area-paint", "paint",
+      {coats: parseInt(document.getElementById("coats").value) || 2}),
+    addWorkIf("chk-wallpaper", "area-wallpaper", "wallpaper",
+      {height_m: parseFloat(document.getElementById("height").value)}),
+    addWorkIf("chk-laminate", "area-laminate", "laminate"),
+  ].filter(Boolean);
+
+  const res = document.getElementById("result");
+  if (!works.length) {
+    res.style.display = "block";
+    res.innerHTML = '<div class="err">Выберите хотя бы одну работу и укажите площадь</div>';
+    btn.disabled = false;
+    return;
+  }
+
+  try {
+    const r = await fetch("/api/v1/calculate", {
+      method: "POST",
+      headers: {"Content-Type": "application/json"},
+      body: JSON.stringify({works: works})
+    });
+    if (!r.ok) {
+      const e = await r.json().catch(() => ({}));
+      throw new Error(e.detail ? JSON.stringify(e.detail) : ("HTTP " + r.status));
+    }
+    const body = await r.json();
+    document.getElementById("grand").textContent = money.format(body.grand_total);
+    document.getElementById("works").innerHTML = body.works.map(w => `
+      <h3>${workName(w.type)} — ${w.area_m2} м²</h3>
+      ${w.options.map((o, i) => `
+        <div class="option">
+          <div class="name">
+            ${i === 0 ? '<span class="badge">выгодно</span>' : ""}
+            ${o.name}
+            <span style="color:#999">· ${o.packages} уп. · рейтинг ${o.rating ?? "—"}</span>
+          </div>
+          <div class="price">${money.format(o.total_price)}</div>
+        </div>`).join("")}
+    `).join("");
+    res.style.display = "block";
+  } catch (e) {
+    res.style.display = "block";
+    res.innerHTML = '<div class="err">Ошибка: ' + e.message + "</div>";
+  }
+  btn.disabled = false;
+});
+
+document.getElementById("m-go").addEventListener("click", async () => {
+  const out = document.getElementById("m-result");
+  const f = document.getElementById("m-file").files[0];
+  if (!f) { out.innerHTML = '<div class="err">Сначала выберите фото</div>'; return; }
+  out.textContent = "Ищем...";
+  const fd = new FormData();
+  fd.append("photo", f);
+  fd.append("category", document.getElementById("m-cat").value);
+  try {
+    const r = await fetch("/api/v1/match-photo", {method: "POST", body: fd});
+    if (!r.ok) throw new Error("HTTP " + r.status);
+    const body = await r.json();
+    out.innerHTML = body.matches.map(m => `
+      <div class="option">
+        <div class="name">${m.name}
+          <span style="color:#999">· совпадение ${(m.score * 100).toFixed(0)}%</span></div>
+        <div class="price">${money.format(m.price)}</div>
+      </div>`).join("");
+  } catch (e) {
+    out.innerHTML = '<div class="err">Ошибка: ' + e.message + "</div>";
+  }
+});
+
+
+
+function workName(t) {
+  return {tile: "Плитка", paint: "Покраска", wallpaper: "Обои", laminate: "Ламинат"}[t] || t;
+}
+</script>
+</body>
+</html>
